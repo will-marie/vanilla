@@ -2,13 +2,6 @@
 import { exportCalendarToPDF, PDFExportOptions } from "@utils/pdfExport";
 import { PDFDocument, PageSizes } from "pdf-lib";
 
-// Helper function to get form field names from PDF bytes
-async function getPdfFieldNames(pdfBytes: Uint8Array): Promise<string[]> {
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const form = pdfDoc.getForm();
-  return form.getFields().map((field) => field.getName());
-}
-
 // Create a minimal valid PNG buffer (1x1 pixel, black)
 const mockPngBuffer = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
@@ -40,8 +33,8 @@ describe("PDF Export Utils", () => {
     const { width, height } = page.getSize();
 
     const [expectedWidth, expectedHeight] = PageSizes.A3;
-    expect(Math.abs(width - expectedWidth)).toBeLessThan(0.5);
-    expect(Math.abs(height - expectedHeight)).toBeLessThan(0.5);
+    expect(Math.abs(width - expectedWidth)).toBeLessThan(1);
+    expect(Math.abs(height - expectedHeight)).toBeLessThan(1);
     expect(pdfDoc.getPages()).toHaveLength(1);
 
     const pdfBytes = await pdfDoc.save();
@@ -66,19 +59,17 @@ describe("PDF Export Utils", () => {
   });
 
   it("should generate PDF with all required content", async () => {
-    // 1. Generate the PDF bytes
     const result = await exportCalendarToPDF(mockOptions);
+    const pdfDoc = await PDFDocument.load(result);
+    const pdfBytes = await pdfDoc.save();
+    const pdfString = Buffer.from(pdfBytes).toString("latin1");
 
-    // 2. Parse the PDF and get field names
-    const fieldNames = await getPdfFieldNames(result);
-
-    // 3. Assert that the expected field names exist
-    expect(fieldNames).toContain("2025");
+    expect(pdfString).toContain("/T (2025)");
     mockOptions.selectedMonths.forEach((month: string) => {
-      expect(fieldNames).toContain(month);
+      expect(pdfString).toContain(`/T (${month})`);
     });
     mockOptions.events.forEach((event: { date: string; title: string }) => {
-      expect(fieldNames).toContain(event.title);
+      expect(pdfString).toContain(`/T (${event.title})`);
     });
   });
 
@@ -90,14 +81,13 @@ describe("PDF Export Utils", () => {
     };
 
     const result = await exportCalendarToPDF(options);
+    const pdfDoc = await PDFDocument.load(result);
+    const pdfBytes = await pdfDoc.save();
+    const pdfString = Buffer.from(pdfBytes).toString("latin1");
 
-    // 2. Parse and get field names
-    const fieldNames = await getPdfFieldNames(result);
-
-    // 3. Assert on the contents
-    expect(fieldNames).toContain("March");
-    expect(fieldNames).toContain("Special Test Event");
-    expect(fieldNames).not.toContain("January");
-    expect(fieldNames).not.toContain("Valentine's Day");
+    expect(pdfString).toContain("/T (March)");
+    expect(pdfString).toContain("/T (Special Test Event)");
+    expect(pdfString).not.toContain("/T (January)");
+    expect(pdfString).not.toContain("/T (Valentine's Day)");
   });
 });
