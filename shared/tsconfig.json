@@ -7,8 +7,16 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@utils/*": ["utils/*"],
+      "@shared/*": ["*"]
+    },
+    "moduleResolution": "node",
+    "resolveJsonModule": true
   },
   "include": ["**/*"],
   "exclude": ["node_modules", "dist", "**/__tests__/**"]
 }
+

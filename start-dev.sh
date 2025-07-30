@@ -1,67 +1,100 @@
 #!/bin/bash
-# start-dev.sh: Start backend and frontend services
+# start-dev.sh: Resilient development watchdog for ChronosCraft AI.
 
-# Colors for output
+# ────────────────────────────────────────────────────────────────
+# 🌈 Terminal Colors
 GREEN="\033[0;32m"
 RED="\033[0;31m"
+YELLOW="\033[1;33m"
 NC="\033[0m" # No Color
 
-check_dependencies() {
-    local service_dir=$1
-    echo -e "${GREEN}Checking dependencies in $service_dir...${NC}"
-    if [ -d "$service_dir/node_modules" ]; then
-        echo -e "${GREEN}Dependencies already installed.${NC}"
-    else
-        echo -e "${RED}Installing dependencies...${NC}"
-        (cd "$service_dir" && npm install)
-    fi
+# ────────────────────────────────────────────────────────────────
+# 🌐 Service URLs
+BACKEND_URL="http://localhost:5000"
+FRONTEND_URL="http://localhost:3000"
+
+# ────────────────────────────────────────────────────────────────
+# 📣 Logging
+log() {
+  echo -e "${YELLOW}[$(date +%H:%M:%S)]${NC} $1"
 }
 
-start_backend() {
-    echo -e "${GREEN}Starting backend...${NC}"
-    (cd server && npm run dev) &
-    BACKEND_PID=$!
-    
-    echo -e "${GREEN}Waiting for backend to become ready...${NC}"
-    until curl --output /dev/null --silent --head --fail http://localhost:5000; do
-        echo "Waiting for backend at http://localhost:5000..."
-        sleep 1
+# ────────────────────────────────────────────────────────────────
+# 🔌 Kill Conflicting Ports
+free_port() {
+  local PORT=$1
+  local PID
+  PID=$(lsof -i tcp:$PORT -sTCP:LISTEN -t)
+  if [ -n "$PID" ]; then
+    log "${RED}Killing process on port $PORT (PID $PID)...${NC}"
+    kill -9 "$PID"
+  fi
+}
+
+# ────────────────────────────────────────────────────────────────
+# 💡 Health Check Logic
+health_check() {
+  local URL=$1
+  curl --silent --fail "$URL" >/dev/null
+}
+
+# ────────────────────────────────────────────────────────────────
+# 🔁 Watchdog Function
+watch_process() {
+  local NAME=$1
+  local DIR=$2
+  local CMD=$3
+  local URL=$4
+  local MAX_FAILURES=5
+
+  while true; do
+    log "${GREEN}[${NAME}] Launching service...${NC}"
+    (
+      cd "$DIR" || { log "${RED}Directory '$DIR' not found.${NC}"; exit 1; }
+      eval "$CMD"
+    ) &
+    PID=$!
+    log "${GREEN}[${NAME}] PID: $PID${NC}"
+
+    local FAILURES=0
+    while kill -0 "$PID" 2>/dev/null; do
+      if health_check "$URL"; then
+        FAILURES=0
+      else
+        FAILURES=$((FAILURES + 1))
+        log "${RED}[${NAME}] Health check failed ($FAILURES).${NC}"
+        if [ "$FAILURES" -ge "$MAX_FAILURES" ]; then
+          log "${RED}[${NAME}] Restarting...${NC}"
+          kill -9 "$PID"
+          break
+        fi
+      fi
+      sleep 5
     done
-    echo -e "${GREEN}Backend is ready!${NC}"
+
+    log "${RED}[${NAME}] Process exited or was killed. Restarting...${NC}"
+    sleep 2
+  done
 }
 
-start_frontend() {
-    echo -e "${GREEN}Starting frontend...${NC}"
-    (cd client && npm run dev)
-}
+# ────────────────────────────────────────────────────────────────
+# 🧼 Startup Routine
+log "Freeing required ports..."
+free_port 3000
+free_port 5000
 
-# Ensure ports are free
-echo "Ensuring ports are free..."
-fuser -k 3000/tcp >/dev/null 2>&1 || true
-fuser -k 5000/tcp >/dev/null 2>&1 || true
-sleep 2
+log "Building shared package..."
+if [ -d shared ]; then
+  (cd shared && npm install && npm run build)
+else
+  log "${RED}Shared folder missing. Cannot proceed.${NC}"
+  exit 1
+fi
 
-# Ensure backend dependencies first
-#check_dependencies server
-#start_backend
+# ────────────────────────────────────────────────────────────────
+# ⚡ Kick Off Services
+watch_process "Backend" "server" "npm run dev" "$BACKEND_URL" &
+watch_process "Frontend" "client" "npm run dev" "$FRONTEND_URL" &
 
-# Ensure client dependencies next
-#check_dependencies client
-#start_frontend
-
-###
-echo "🚧 Building shared package..."
-(cd shared && npm install && npm run build) &
-
-echo "🚀 Starting server..."
-check_dependencies server
-(cd server && npm install && npm run dev) &
-
-echo "🌐 Starting client..."
-check_dependencies client
-start_frontend
-#(cd client && npm install && npm run dev) &
-###
-
-##
-#cd shared && npx concurrently "cd ../server && npm run dev" "wait-on http://localhost:5000 && cd ../client && npm run dev"
+# Wait forever
+wait

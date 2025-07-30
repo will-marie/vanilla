@@ -33,7 +33,7 @@
   },
   **/
   "postAttachCommand": {
-    "client + server": "bash ./start-dev.sh"
+    "client + server": "bash ./start-app.sh"
   },
 
   // --- VS CODE CUSTOMIZATIONS ---
