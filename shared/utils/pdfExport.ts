@@ -7,7 +7,12 @@ import { PDFExportOptions } from "./types";
 import { drawMonthSection } from "./drawMonthSection";
 import { MONTH_NAMES, GRID_COLS, GRID_ROWS } from "./constants";
 
-export type { PDFExportOptions } from "./types";
+export type {
+  PDFExportOptions,
+  CalendarEvent,
+  // other types...
+} from "./types";
+
 export async function exportCalendarToPDF({
   year,
   selectedMonths,

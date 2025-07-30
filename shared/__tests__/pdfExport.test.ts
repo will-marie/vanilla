@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import { exportCalendarToPDF, PDFExportOptions } from "@utils/pdfExport";
 import { PDFDocument, PageSizes } from "pdf-lib";
+import pdfParse from "pdf-parse";
 
 // Create a minimal valid PNG buffer (1x1 pixel, black)
 const mockPngBuffer = new Uint8Array([
@@ -33,8 +34,8 @@ describe("PDF Export Utils", () => {
     const { width, height } = page.getSize();
 
     const [expectedWidth, expectedHeight] = PageSizes.A3;
-    expect(Math.abs(width - expectedWidth)).toBeLessThan(1);
-    expect(Math.abs(height - expectedHeight)).toBeLessThan(1);
+    expect(Math.abs(width - expectedWidth)).toBeLessThan(0.5);
+    expect(Math.abs(height - expectedHeight)).toBeLessThan(0.5);
     expect(pdfDoc.getPages()).toHaveLength(1);
 
     const pdfBytes = await pdfDoc.save();
@@ -60,16 +61,19 @@ describe("PDF Export Utils", () => {
 
   it("should generate PDF with all required content", async () => {
     const result = await exportCalendarToPDF(mockOptions);
-    const pdfDoc = await PDFDocument.load(result);
-    const pdfBytes = await pdfDoc.save();
-    const pdfString = Buffer.from(pdfBytes).toString("latin1");
+    const data = await pdfParse(result);
 
-    expect(pdfString).toContain("/T (2025)");
+    // Check for year
+    expect(data.text).toContain("2025");
+
+    // Check for selected months
     mockOptions.selectedMonths.forEach((month: string) => {
-      expect(pdfString).toContain(`/T (${month})`);
+      expect(data.text).toContain(month);
     });
+
+    // Check for events
     mockOptions.events.forEach((event: { date: string; title: string }) => {
-      expect(pdfString).toContain(`/T (${event.title})`);
+      expect(data.text).toContain(event.title);
     });
   });
 
@@ -81,13 +85,14 @@ describe("PDF Export Utils", () => {
     };
 
     const result = await exportCalendarToPDF(options);
-    const pdfDoc = await PDFDocument.load(result);
-    const pdfBytes = await pdfDoc.save();
-    const pdfString = Buffer.from(pdfBytes).toString("latin1");
+    const data = await pdfParse(result);
 
-    expect(pdfString).toContain("/T (March)");
-    expect(pdfString).toContain("/T (Special Test Event)");
-    expect(pdfString).not.toContain("/T (January)");
-    expect(pdfString).not.toContain("/T (Valentine's Day)");
+    // Check for included content
+    expect(data.text).toContain("March");
+    expect(data.text).toContain("Special Test Event");
+
+    // Check for excluded content
+    expect(data.text).not.toContain("January");
+    expect(data.text).not.toContain("Valentine's Day");
   });
 });
